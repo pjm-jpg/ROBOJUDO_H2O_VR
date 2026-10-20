@@ -31,7 +31,7 @@ class MujocoEnv(Environment):
         # mujoco.mj_resetDataKeyframe(self.model, self.data, 0)
         mujoco.mj_step(self.model, self.data)  # pyright: ignore[reportAttributeAccessIssue]
 
-        self.viewer = mujoco_viewer.MujocoViewer(
+        self.viewer = None if cfg_env.headless else mujoco_viewer.MujocoViewer(
             self.model,
             self.data,
             width=1200,
@@ -39,12 +39,13 @@ class MujocoEnv(Environment):
             hide_menus=True,
             diable_key_callbacks=True,
         )
-        self.viewer.cam.distance = 3.0
-        self.viewer.cam.elevation = -10.0
-        self.viewer.cam.azimuth = 180.0
+        if self.viewer is not None:
+            self.viewer.cam.distance = 3.0
+            self.viewer.cam.elevation = -10.0
+            self.viewer.cam.azimuth = 180.0
         # self.viewer._paused = True
 
-        if cfg_env.visualize_extras:
+        if cfg_env.visualize_extras and self.viewer is not None:
             self.visualizer = MujocoVisualizer(self.viewer)
         else:
             self.visualizer = None
@@ -142,9 +143,10 @@ class MujocoEnv(Environment):
         if hand_pose is not None:
             logger.info("Hand pose-->", hand_pose)
 
-        self.viewer.cam.lookat = self.data.qpos.astype(np.float32)[:3]
-        if self.viewer.is_alive:
-            self.viewer.render()
+        if self.viewer is not None:
+            self.viewer.cam.lookat = self.data.qpos.astype(np.float32)[:3]
+            if self.viewer.is_alive:
+                self.viewer.render()
 
         for _ in range(self.sim_decimation):
             torque = (pd_target - self.dof_pos) * self.stiffness - self.dof_vel * self.damping
@@ -157,7 +159,8 @@ class MujocoEnv(Environment):
         self.update(simple=False)
 
     def shutdown(self):
-        self.viewer.close()
+        if self.viewer is not None:
+            self.viewer.close()
 
 
 if __name__ == "__main__":

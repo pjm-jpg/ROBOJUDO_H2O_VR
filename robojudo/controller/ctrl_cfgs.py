@@ -1,4 +1,6 @@
-from robojudo.config import ASSETS_DIR, Config
+from pydantic import Field
+
+from robojudo.config import ASSETS_DIR, ROOT_DIR, Config
 
 
 class CtrlCfg(Config):
@@ -107,6 +109,28 @@ class MotionH2HCtrlCfg(MotionCtrlCfg):
     ctrl_type: str = "MotionH2HCtrl"
 
     extra_motion_data: bool = False  # extra data for motion recognition
+
+
+class QuestH2HCtrlCfg(CtrlCfg):
+    ctrl_type: str = "QuestH2HCtrl"
+    reader_root: str = (ROOT_DIR.parent / "humanoid-projects/H2O-VR/oculus_reader-main").as_posix()
+    ip_address: str | None = None
+    serial: str | None = None
+    port: int = Field(default=5555, ge=1, le=65535)
+    adb: str | None = None
+    record: str | None = None
+    extend_config: list[dict]
+    frequency: float = Field(default=50.0, gt=0, allow_inf_nan=False)
+    max_age: float = Field(default=0.5, gt=0, allow_inf_nan=False)
+    calibration_seconds: float = Field(default=1.0, gt=0, allow_inf_nan=False)
+    calibration_tolerance: float = Field(default=0.04, gt=0, allow_inf_nan=False)
+    # Calibration always requires TRACKED. Runtime may accept valid INFERRED poses.
+    require_tracked: bool = False
+    head_scale: float = Field(default=1.0, gt=0, allow_inf_nan=False)
+    hand_scale: float = Field(default=1.0, gt=0, allow_inf_nan=False)
+    smoothing_seconds: float = Field(default=0.08, gt=0, allow_inf_nan=False)
+    max_speed: float = Field(default=1.0, gt=0, allow_inf_nan=False)
+    max_displacement: float = Field(default=1.0, gt=0, allow_inf_nan=False)
 
 
 class MotionKungfuBotCtrlCfg(MotionCtrlCfg):

@@ -93,13 +93,15 @@ class h1_switch(RlMultiPolicyPipelineCfg):
 
 
 @cfg_registry.register
+#继承自RlPipelineCfg类，定义了一个名为h1_h2h的配置类，用于配置H1机器人在H2H任务中的RL管道。
 class h1_h2h(RlPipelineCfg):
     robot: str = "h1"
+    #指定Mujoco环境的配置类为H1MujocoEnvCfg，用于模拟H1机器人的物理环境。
     env: H1MujocoEnvCfg = H1MujocoEnvCfg()
-
+    #指定控制器的配置类为H1MotionH2HCtrlCfg，用于控制H1机器人在H2H任务中的动作。
     ctrl: list[KeyboardCtrlCfg | H1MotionH2HCtrlCfg] = [
         KeyboardCtrlCfg(),
         H1MotionH2HCtrlCfg(),
     ]
-
+    #指定策略的配置类为H1H2HPolicyCfg，用于定义H1机器人在H2H任务中的强化学习策略。
     policy: H1H2HPolicyCfg = H1H2HPolicyCfg()

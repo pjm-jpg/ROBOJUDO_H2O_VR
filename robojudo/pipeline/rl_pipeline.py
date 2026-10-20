@@ -159,23 +159,37 @@ class RlPipeline(Pipeline):
                         logger.warning("Simulation Env reborn!")
                         self.env.reborn()  # pyright: ignore[reportAttributeAccessIssue]
                         self.policy.reset_alignment()
-                case "[MOTION_RESET]" | "[MOTION_FADE_IN]":
+                case "[MOTION_RESET]":
+                    # MotionCtrl 会在后面的 post_step_callback() 中把
+                    # motion_time 重置为 0。对于始终在线运行的 H2H 策略，
+                    # 这里只应重置参考动作进度，不能再次触发策略 blend-in；
+                    # 否则 history、last_action 和动作首帧之间会出现跳变。
+                    if self._has_default_pose_mode:
+                        self._blend_out_active = False
+                        self._blend_out_step = 0
+                        self._user_fade_out = False
+                        self._set_default_pose_mode(False)
+                        logger.info("Motion reset — starting motion from frame 0")
+                    else:
+                        self._pending_blend_in = False
+                        logger.info("Motion reset — reference returned to frame 0")
+                case "[MOTION_FADE_IN]":
+                    # 初次启动时 H2H 策略已经在第 0 帧持续控制机器人，
+                    # Fade In 只需由 MotionCtrl 平滑增加参考动作播放速度。
+                    # 只有之前确实 Fade Out 过，才需要重新执行策略 blend-in。
+                    was_blended_out = self._blend_out_active or self._user_fade_out
                     self._blend_out_active = False
                     self._blend_out_step = 0
                     self._user_fade_out = False
                     if self._has_default_pose_mode:
-                        # Policy is already active — just switch target
-                        # from default pose to motion (instant, no blend).
-                        logger.info(
-                            f"{command} — starting motion from frame 0"
-                        )
                         self._set_default_pose_mode(False)
-                    else:
-                        # Legacy path: full blend-in needed.
-                        logger.info(
-                            f"{command} — re-entering blend-in phase"
-                        )
+                        logger.info("Motion fade in — starting motion from frame 0")
+                    elif was_blended_out:
                         self._pending_blend_in = True
+                        logger.info("Motion fade in — re-entering blend-in phase")
+                    else:
+                        self._pending_blend_in = False
+                        logger.info("Motion fade in — starting reference playback")
                 case "[MOTION_FADE_OUT]":
                     if self._has_default_pose_mode:
                         logger.info("Fade out — switching to default pose mode")

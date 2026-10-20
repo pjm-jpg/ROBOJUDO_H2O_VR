@@ -11,6 +11,7 @@ class MotionGUI:
         self.motion_name = "Motion Blank Name"
         self.motion_time = 0.0
         self.motion_length = 10.0
+        self.switch_pending = False
 
         self.thread_gui = Thread(target=self._run_gui, daemon=True)
         self.thread_gui.start()
@@ -68,9 +69,29 @@ class MotionGUI:
     def switch_motion(self):
         try:
             motion_id = int(self.motion_input.get())
-            self.motion_ctrl.load_motion(motion_id)
+            if self.switch_pending:
+                return
+
+            # 切换动作前先让 pipeline 在 5 秒内平滑回到默认站姿。
+            # 原实现会立即加载新动作，并沿用旧的播放速度，导致新动作
+            # 从第 0 帧直接开始执行，机器人很容易因参考目标突变而摔倒。
+            self.switch_pending = True
+            self.confirm_button.config(state=tk.DISABLED, text="Waiting...")
+            self.motion_ctrl.gui_commands.put("[MOTION_FADE_OUT]")
+
+            # pipeline 的默认 blend-out 时长是 5 秒，多留 0.5 秒余量。
+            # 加载完成后保持播放速度为 0，必须由用户再次点击 Fade In。
+            self.root.after(5500, lambda: self._load_motion_paused(motion_id))
         except ValueError:
             messagebox.showerror("Error", "Invalid ID")
+
+    def _load_motion_paused(self, motion_id):
+        self.motion_ctrl.play_speed_ratio = 0.0
+        # 终止上一轮 fade 定时器可能尚未消费完的速度序列。
+        self.motion_ctrl.speed_steps = iter(())
+        self.motion_ctrl.load_motion(motion_id)
+        self.switch_pending = False
+        self.confirm_button.config(state=tk.NORMAL, text="Confirm")
 
     def fade_in(self):
         # self.motion_ctrl.fade_in()

@@ -16,7 +16,7 @@ from robojudo.pipeline.rl_pipeline import RlPipeline
 
 logger = logging.getLogger("robojudo")
 
-
+#命令行参数解析，用于指定配置文件
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -33,12 +33,13 @@ def parse_args():
 def main():
     args = parse_args()
     logger.info(f"Using config: {args.config}")
-    config_manager = ConfigManager(config_name=args.config)
-
+    #配置一个ConfigManager实例，用于加载指定的配置文件
+    config_manager = ConfigManager(config_name=args.config) 
+    #取得配置文件中的RlPipelineCfg实例
     cfg: RlPipelineCfg = config_manager.get_cfg()
 
+    #根据配置文件中的pipeline_type字段，获取对应的pipeline类
     pipeline_type = cfg.pipeline_type
-
     pipeline_class: type[RlPipeline] = getattr(robojudo.pipeline, pipeline_type)
     logger.info(f"Using pipeline: {pipeline_type} -> {pipeline_class}")
 
@@ -52,7 +53,7 @@ def main():
 
     while True:
         time_start = time.time()
-        pipeline.step()
+        pipeline.step()#进行机器人的控制和环境交互
         time_end = time.time()
         time_diff = time_end - time_start
 

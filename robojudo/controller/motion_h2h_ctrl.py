@@ -49,7 +49,7 @@ class MotionH2HCtrl(MotionCtrl):
         )
 
         self.play_speed_ratio = 0.0
-        self.speed_target = 1 / 2
+        self.speed_target =0.1# 1 / 2
 
     def get_robot_state(self):
         fk_info = self.env.fk_info

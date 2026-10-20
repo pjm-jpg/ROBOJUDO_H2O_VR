@@ -27,7 +27,7 @@ class H2HStudentPolicy(Policy):
         self._init_history(np.zeros(self.history_obs_size))
 
     def _get_commands(self, ctrl_data):
-        target_keys = ["MotionH2HCtrl"]
+        target_keys = ["QuestH2HCtrl", "MotionH2HCtrl"]
         # ,"MotionCtrlDeltaHook", "MotionExtendCtrl",  "SMPLCtrl", "RemoteCtrl", "SuperCtrl"]
         motion_res = next((ctrl_data[k] for k in target_keys if k in ctrl_data), None)
         if motion_res is None:
@@ -126,6 +126,15 @@ class H2HStudentPolicy(Policy):
 
     def reset(self):
         pass
+
+    def reset_temporal_state(self, env_data):
+        """Explicit reinitialization for Quest transitions; legacy reset is unchanged."""
+        self.last_action = np.zeros(self.num_actions)
+        angular = env_data.torso_ang_vel if self.use_imu_torso else env_data.base_ang_vel
+        quat = env_data.torso_quat if self.use_imu_torso else env_data.base_quat
+        gravity = quat_rotate_inverse_np(quat, self.gravity_vec)
+        history = np.concatenate([env_data.dof_pos, env_data.dof_vel, angular, gravity, self.last_action])
+        self._init_history(history)
 
     def post_step_callback(self, commands=None):
         pass
