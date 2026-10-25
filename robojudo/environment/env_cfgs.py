@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 
 from robojudo.config import Config
 from robojudo.tools.tool_cfgs import DoFConfig, ForwardKinematicCfg, ZedOdometryCfg
@@ -82,6 +82,11 @@ class UnitreeEnvCfg(RobotEnvCfg):
 
         control_dt: float = 0.02
         """control command dt"""
+
+        domain_id: int = Field(default=0, ge=0, le=232)
+        state_timeout: float = Field(default=0.5, gt=0, allow_inf_nan=False)
+        connect_timeout: float = Field(default=10.0, gt=0, allow_inf_nan=False)
+        command_timeout: float = Field(default=0.5, gt=0, allow_inf_nan=False)
 
     env_type: str = "UnitreeEnv"  # For unitree_sdk2py
     # env_type: str = "UnitreeCppEnv" # For unitree_cpp

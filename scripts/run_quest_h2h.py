@@ -18,6 +18,8 @@ def parse_args():
     parser.add_argument('--record', help='Record original received frames to a JSONL file')
     parser.add_argument('--preview-only', action='store_true', help='Show targets; E cannot enable physics')
     parser.add_argument('--headless', action='store_true', help='Disable the MuJoCo viewer')
+    parser.add_argument('--dds-sim', action='store_true', help='Use real Unitree DDS transport to the local MuJoCo bridge')
+    parser.add_argument('--dds-domain', type=int, default=42, help='Local simulation DDS domain (1..100)')
     parser.add_argument('--no-keyboard', action='store_true', help='Disable keyboard listener (passive monitoring)')
     parser.add_argument('--require-tracked', action='store_true', help='Pause on inferred controller positions')
     parser.add_argument('--head-scale', type=float, default=1.0)
@@ -35,7 +37,12 @@ def main():
     cfg = ConfigManager('h1_h2h_quest').get_cfg()
     cfg.device = 'cpu'
     cfg.preview_only = args.preview_only
-    cfg.env.headless = args.headless
+    if args.dds_sim:
+        from robojudo.config.h1.env.h1_dds_sim_env_cfg import H1DDSSimEnvCfg
+        from robojudo.config.h1.env.h1_real_env_cfg import H1UnitreeCfg
+        cfg.env = H1DDSSimEnvCfg(unitree=H1UnitreeCfg(net_if='lo', domain_id=args.dds_domain))
+    else:
+        cfg.env.headless = args.headless
     if args.no_keyboard:
         cfg.ctrl = [ctrl for ctrl in cfg.ctrl if ctrl.ctrl_type != 'KeyboardCtrl']
     quest = next(ctrl for ctrl in cfg.ctrl if ctrl.ctrl_type == 'QuestH2HCtrl')

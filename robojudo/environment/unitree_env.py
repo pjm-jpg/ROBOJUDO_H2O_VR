@@ -1,4 +1,6 @@
 import logging
+import copy
+import threading
 import time
 
 import numpy as np
@@ -48,7 +50,10 @@ class UnitreeEnv(Environment):
         self.enabled: bool = cfg_env.act
         super().__init__(cfg_env=cfg_env, device=device)
 
-        ChannelFactoryInitialize(0, self.cfg_env.unitree.net_if)
+        self._initialize_channel()
+        self._cmd_lock = threading.RLock()
+        self._last_state_received = None
+        self._last_target_received = None
 
         self.RemoteControllerHandler = None
         self.robot = self.cfg_env.unitree.robot
@@ -145,7 +150,10 @@ class UnitreeEnv(Environment):
         self.self_check()
 
     def wait_for_low_state(self):
+        deadline = time.monotonic() + self.cfg_env.unitree.connect_timeout
         while self.low_state.tick == 0:
+            if time.monotonic() > deadline:
+                raise TimeoutError('No Unitree lowstate received before connection timeout')
             time.sleep(self.cfg_env.unitree.control_dt)
         logger.info("Successfully connect to the robot")
         self._init_done = True
@@ -156,6 +164,9 @@ class UnitreeEnv(Environment):
                 logger.info(f"[UnitreeEnv] {self.robot} mode_machine set to {mode_machine}")
                 self.mode_machine_ = mode_machine
                 init_cmd_hg(self.low_cmd, self.mode_machine_, self.mode_pr_)
+
+    def _initialize_channel(self):
+        ChannelFactoryInitialize(self.cfg_env.unitree.domain_id, self.cfg_env.unitree.net_if)
 
     def self_check(self):
         assert self._init_done, "[UnitreeEnv] not inited as expected, no data received."
@@ -192,16 +203,21 @@ class UnitreeEnv(Environment):
 
     def LowStateHgHandler(self, msg: LowStateHG):
         self.low_state = msg
+        self._last_state_received = time.monotonic()
         # self.mode_machine_ = self.low_state.mode_machine
 
     def LowStateGoHandler(self, msg: LowStateGo):
         self.low_state = msg
+        self._last_state_received = time.monotonic()
 
     def update(self):
+        if self._last_state_received is None or time.monotonic() - self._last_state_received > self.cfg_env.unitree.state_timeout:
+            raise TimeoutError('Unitree lowstate is stale; control stopped')
+        state = self.low_state
         # robot state
         dof_pos = []
         dof_vel = []
-        for motor_state in self.low_state.motor_state:
+        for motor_state in state.motor_state:
             dof_pos.append(motor_state.q)
             dof_vel.append(motor_state.dq)
         dof_pos = np.asarray(dof_pos, dtype=np.float32)
@@ -216,9 +232,9 @@ class UnitreeEnv(Environment):
         self._dof_vel = dof_vel
 
         if self.robot == "g1":
-            quat = np.array(self.low_state.imu_state.quaternion, dtype=np.float32)[[1, 2, 3, 0]]
-            ang_vel = np.array(self.low_state.imu_state.gyroscope, dtype=np.float32)
-            rpy = np.array(self.low_state.imu_state.rpy, dtype=np.float32)
+            quat = np.array(state.imu_state.quaternion, dtype=np.float32)[[1, 2, 3, 0]]
+            ang_vel = np.array(state.imu_state.gyroscope, dtype=np.float32)
+            rpy = np.array(state.imu_state.rpy, dtype=np.float32)
 
             if self.born_place_align:
                 quat = self.base_align.align_quat(quat)
@@ -230,8 +246,8 @@ class UnitreeEnv(Environment):
         elif self.robot == "h1":
             # h1 imu is on the torso
             # imu data needs to be transformed to the pelvis frame
-            torso_quat = np.array(self.low_state.imu_state.quaternion, dtype=np.float32)[[1, 2, 3, 0]]
-            torso_ang_vel = np.array(self.low_state.imu_state.gyroscope, dtype=np.float32)
+            torso_quat = np.array(state.imu_state.quaternion, dtype=np.float32)[[1, 2, 3, 0]]
+            torso_ang_vel = np.array(state.imu_state.gyroscope, dtype=np.float32)
 
             if self.born_place_align:
                 torso_quat = self.torso_align.align_quat(torso_quat)
@@ -240,8 +256,9 @@ class UnitreeEnv(Environment):
             self._torso_ang_vel = torso_ang_vel
 
             # Warn: torso index fixed
-            waist_yaw = self.low_state.motor_state.q[self._dof_idx[10] if self._dof_idx is not None else 10]
-            waist_yaw_omega = self.low_state.motor_state.dq[self._dof_idx[10] if self._dof_idx is not None else 10]
+            waist_motor = state.motor_state[self._dof_idx[10] if self._dof_idx is not None else 10]
+            waist_yaw = waist_motor.q
+            waist_yaw_omega = waist_motor.dq
             base_quat, base_ang_vel = transform_imu_data(
                 waist_yaw=waist_yaw,
                 waist_yaw_omega=waist_yaw_omega,
@@ -272,6 +289,7 @@ class UnitreeEnv(Environment):
         # FK
         if self.update_with_fk:
             fk_info = self.fk()
+            self._fk_info = fk_info
             self._torso_pos = fk_info[self._torso_name]["pos"]
             if self.robot != "h1":
                 self._torso_quat = fk_info[self._torso_name]["quat"]
@@ -302,41 +320,55 @@ class UnitreeEnv(Environment):
         self.control_joints(positions, hand_pose)
 
     def shutdown(self):
+        if hasattr(self, 'lowcmd_send_thread'):
+            self.lowcmd_send_thread.Wait(1.0)
         self.set_damping_mode()
         self.enabled = False
+        self.lowstate_subscriber.Close()
+        self.lowcmd_publisher_.Close()
 
     def set_zero_torque_mode(self):
-        create_zero_cmd(self.low_cmd)
-        self.send_cmd(self.low_cmd)
+        with self._cmd_lock:
+            create_zero_cmd(self.low_cmd)
+            self.send_cmd(self.low_cmd)
 
     def set_damping_mode(self):
-        create_damping_cmd(self.low_cmd)
-        self.send_cmd(self.low_cmd)
+        with self._cmd_lock:
+            create_damping_cmd(self.low_cmd)
+            self.send_cmd(self.low_cmd)
 
     def send_cmd(self, cmd: LowCmdGo | LowCmdHG = None):
         if cmd is None:
             cmd = self.low_cmd
-        cmd.crc = CRC().Crc(cmd)
-        self.lowcmd_publisher_.Write(cmd)
+        with self._cmd_lock:
+            now = time.monotonic()
+            if ((self._last_target_received is not None
+                 and now - self._last_target_received > self.cfg_env.unitree.command_timeout)
+                    or (self._last_state_received is not None
+                        and now - self._last_state_received > self.cfg_env.unitree.state_timeout)):
+                cmd = copy.deepcopy(cmd)
+                create_damping_cmd(cmd)
+            cmd.crc = CRC().Crc(cmd)
+            self.lowcmd_publisher_.Write(cmd)
 
     def set_cmd_i(self, i, command, kp=0, kd=0, control_type="position"):
         # if i > 19:
         #     raise IndexError(f"{i} is bigger than 18!")
         if control_type == 0 or control_type == "position":
             self.low_cmd.motor_cmd[i].q = command
-            self.low_cmd.motor_cmd[i].qd = 0
+            self.low_cmd.motor_cmd[i].dq = 0
             self.low_cmd.motor_cmd[i].kp = kp
             self.low_cmd.motor_cmd[i].kd = kd
             self.low_cmd.motor_cmd[i].tau = 0
         elif control_type == 1 or control_type == "velocity":
             self.low_cmd.motor_cmd[i].q = 0
-            self.low_cmd.motor_cmd[i].qd = command
+            self.low_cmd.motor_cmd[i].dq = command
             self.low_cmd.motor_cmd[i].kp = kp
             self.low_cmd.motor_cmd[i].kd = kd
             self.low_cmd.motor_cmd[i].tau = 0
         elif control_type == 2 or control_type == "torque":
             self.low_cmd.motor_cmd[i].q = 0
-            self.low_cmd.motor_cmd[i].qd = 0
+            self.low_cmd.motor_cmd[i].dq = 0
             self.low_cmd.motor_cmd[i].kp = 0
             self.low_cmd.motor_cmd[i].kd = 0
             self.low_cmd.motor_cmd[i].tau = command
@@ -356,13 +388,13 @@ class UnitreeEnv(Environment):
 
         for i in range(7):
             self.left_hand_cmd.motor_cmd[i].q = hand_pose[i]
-            self.left_hand_cmd.motor_cmd[i].qd = 0
+            self.left_hand_cmd.motor_cmd[i].dq = 0
             self.left_hand_cmd.motor_cmd[i].kp = 1
             self.left_hand_cmd.motor_cmd[i].kd = 0.1
             self.left_hand_cmd.motor_cmd[i].tau = 0
 
             self.right_hand_cmd.motor_cmd[i].q = hand_pose[i + 7]
-            self.right_hand_cmd.motor_cmd[i].qd = 0
+            self.right_hand_cmd.motor_cmd[i].dq = 0
             self.right_hand_cmd.motor_cmd[i].kp = 1
             self.right_hand_cmd.motor_cmd[i].kd = 0.1
             self.right_hand_cmd.motor_cmd[i].tau = 0
@@ -385,8 +417,15 @@ class UnitreeEnv(Environment):
         self.right_hand_cmd_publisher.Write(self.right_hand_cmd)
 
     def control_joints(self, commands, hand_pose=None):
+        with self._cmd_lock:
+            self._control_joints_locked(commands, hand_pose)
+
+    def _control_joints_locked(self, commands, hand_pose=None):
         if not self.enabled:
             return
+        if not np.isfinite(commands).all():
+            raise ValueError('Non-finite joint target')
+        self._last_target_received = time.monotonic()
 
         if hand_pose is not None:
             # logger.debug(f"Control hand pose: {hand_pose}")

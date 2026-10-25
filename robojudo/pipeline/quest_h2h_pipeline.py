@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 @pipeline_registry.register
 class QuestH2HPipeline(Pipeline):
     def __init__(self, cfg):
-        if not cfg.env.is_sim or cfg.env.env_type != 'MujocoEnv':
+        if not cfg.env.is_sim or cfg.env.env_type not in ('MujocoEnv', 'UnitreeDDSSimEnv'):
             raise ValueError('QuestH2HPipeline currently supports MuJoCo simulation only')
         super().__init__(cfg)
         self.ctrl_manager = None
@@ -100,6 +100,8 @@ class QuestH2HPipeline(Pipeline):
                 self.quest.command(command)
 
     def _draw(self, data, references):
+        if hasattr(self.env, 'publish_targets'):
+            self.env.publish_targets(references, data.base_pos)
         if self.env.visualizer is not None:
             self.env.visualizer.update_rg_view(
                 references['robot_body_pos_subset'], np.tile([0, 0, 0, 1], (3, 1)), 0)
@@ -116,6 +118,10 @@ class QuestH2HPipeline(Pipeline):
 
     def step(self, dry_run=False):
         self.env.update()
+        if hasattr(self.env, 'consume_sim_fault'):
+            fault = self.env.consume_sim_fault()
+            if fault:
+                self.quest.invalidate(fault)
         data = self.env.get_data()
         control = self.ctrl_manager.get_ctrl_data(data)
         commands = control.get('COMMANDS', [])
@@ -126,9 +132,13 @@ class QuestH2HPipeline(Pipeline):
             data = self.env.get_data()
             control['QuestH2HCtrl'] = Box(self.quest.get_data())
         if not self.running:
+            if hasattr(self.env, 'set_sim_active'):
+                self.env.set_sim_active(False)
             return
         references = control['QuestH2HCtrl']
         active = references['enabled'] and not self.cfg.preview_only
+        if not active and hasattr(self.env, 'set_sim_active'):
+            self.env.set_sim_active(False)
         if active and not self._was_enabled:
             self.policy.reset_temporal_state(self._policy_env_data(data))
             self._blend_from = data.dof_pos.copy()
@@ -145,6 +155,8 @@ class QuestH2HPipeline(Pipeline):
                 alpha = min((self._blend_step + 1) / steps, 1.0)
                 target = (1 - alpha) * self._blend_from + alpha * target
                 self.env.step(target, extras.get('hand_pose'))
+                if hasattr(self.env, 'set_sim_active'):
+                    self.env.set_sim_active(True)
                 self._blend_step += 1
                 if self.env.viewer is not None and not self.env.viewer.is_alive:
                     self.running = False
