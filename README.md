@@ -197,6 +197,10 @@ python submodule_install.py
 # python submodule_install.py unitree_cpp
 ```
 
+## 保存本项目及依赖修改
+
+在项目根目录运行 `python scripts/commit_all.py -m "提交说明"`，会将项目代码与依赖的本地修改一起保存为一次主仓库提交，再执行 `git push`。详细说明见 [统一提交流程](docs/git_workflow.md)。
+
 # 📖Quick Start
 
 `RoboJuDo` is a modular framework where tasks can be flexibly defined by composing configuration files.  

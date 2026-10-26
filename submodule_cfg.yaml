@@ -17,6 +17,8 @@ mujoco_viewer:
 unitree_cpp:
   install: false
   path: packages/unitree_cpp
+  patches:
+    - ../../third_party/patches/unitree_cpp.patch
 
 
 # For OmniH2O, motionlib controller
@@ -28,9 +30,7 @@ phc:
     - ../patches/phc.patch
     # [Optional] Windows Platform patch, for speed up multi-process
     # - ../patches/phc-win.patch 
-  addons:
-    # Addon for 29 dof g1, as phc only support 23dof version
-    - ../patches/phc_addon_g1
+  # Local G1 additions are included in the full PHC source patch.
   extra_packages:
     - third_party/phc/poselib
 
@@ -39,4 +39,6 @@ phc:
 zed_proxy:
   install: false
   path: packages/zed_proxy
+  patches:
+    - ../../third_party/patches/zed_proxy.patch
 

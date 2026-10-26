@@ -1,5 +1,46 @@
+diff --git a/mujoco_viewer/callbacks.py b/mujoco_viewer/callbacks.py
+index 39ce6a77249e58b0731cc1168fb0c26c35fa2617..71a81b520b6342f0745c6873ba9dcc64e9baab27 100644
+--- a/mujoco_viewer/callbacks.py
++++ b/mujoco_viewer/callbacks.py
+@@ -9,6 +9,14 @@ MUJOCO_VERSION = tuple(map(int, mujoco.__version__.split('.')))
+ 
+ 
+ class Callbacks:
++    def _move_camera(self, action, reldx, reldy):
++        # MuJoCo 3.11 removed the scene argument from camera movement only.
++        # mjv_movePerturb still requires the scene.
++        if MUJOCO_VERSION >= (3, 11, 0):
++            mujoco.mjv_moveCamera(self.model, action, reldx, reldy, self.cam)
++        else:
++            mujoco.mjv_moveCamera(self.model, action, reldx, reldy, self.scn, self.cam)
++
+     def __init__(self, hide_menus):
+         self._gui_lock = Lock()
+         self._button_left_pressed = False
+@@ -180,13 +188,7 @@ class Callbacks:
+                     self.scn,
+                     self.pert)
+             else:
+-                mujoco.mjv_moveCamera(
+-                    self.model,
+-                    action,
+-                    dx / height,
+-                    dy / height,
+-                    self.scn,
+-                    self.cam)
++                self._move_camera(action, dx / height, dy / height)
+ 
+         self._last_mouse_x = int(self._scale * xpos)
+         self._last_mouse_y = int(self._scale * ypos)
+@@ -318,5 +320,4 @@ class Callbacks:
+ 
+     def _scroll_callback(self, window, x_offset, y_offset):
+         with self._gui_lock:
+-            mujoco.mjv_moveCamera(
+-                self.model, mujoco.mjtMouse.mjMOUSE_ZOOM, 0, -0.05 * y_offset, self.scn, self.cam)
++            self._move_camera(mujoco.mjtMouse.mjMOUSE_ZOOM, 0, -0.05 * y_offset)
 diff --git a/mujoco_viewer/mujoco_viewer.py b/mujoco_viewer/mujoco_viewer.py
-index a86a1d6..d1bcc61 100644
+index a86a1d62d447cea9ee3320d69e0984a7b7b7be96..d1bcc6144da51d9badb177c5d23e0e3fd0deea53 100644
 --- a/mujoco_viewer/mujoco_viewer.py
 +++ b/mujoco_viewer/mujoco_viewer.py
 @@ -18,7 +18,8 @@ class MujocoViewer(Callbacks):

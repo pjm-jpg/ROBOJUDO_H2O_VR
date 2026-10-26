@@ -1,0 +1,24 @@
+{
+  "modules": {
+    "mujoco_viewer": {
+      "path": "third_party/mujoco_viewer",
+      "base": "31af945ef640d276a3bafe5e9b858d80c46c8509",
+      "patch": "third_party/patches/mujoco_viewer.patch"
+    },
+    "phc": {
+      "path": "third_party/phc",
+      "base": "f8e75fb94918140e85db9744abf1f3b7667428a1",
+      "patch": "third_party/patches/phc.patch"
+    },
+    "unitree_cpp": {
+      "path": "packages/unitree_cpp",
+      "base": "222028cdaa79cdd7c7cda6645ebd2b02d201be0c",
+      "patch": "third_party/patches/unitree_cpp.patch"
+    },
+    "zed_proxy": {
+      "path": "packages/zed_proxy",
+      "base": "b2002e0654645497537800519fbe072358f999dd",
+      "patch": "third_party/patches/zed_proxy.patch"
+    }
+  }
+}
