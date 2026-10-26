@@ -145,6 +145,12 @@ class H2HStudentPolicy(Policy):
     #     return self.default_dof_pos
 
     def debug_viz(self, visualizer: MujocoVisualizer, env_data, ctrl_data, extras):
+        for name in ("QuestH2HCtrl", "MotionH2HCtrl"):
+            reference = ctrl_data.get(name, {})
+            if 'stationary_status' in reference:
+                visualizer.update_rg_view(reference['raw_ref_body_pos_subset'],
+                                         np.tile([0, 0, 0, 1], (3, 1)), 2)
+                break
         visualizer.update_rg_view(
             body_pos=extras["body_pos_subset"],
             body_rot=np.array([[0, 0, 0, 1]] * len(extras["body_pos_subset"])),

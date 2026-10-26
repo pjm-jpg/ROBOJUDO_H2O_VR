@@ -90,6 +90,9 @@ class UnitreeDDSSimEnv(UnitreeEnv):
         self._target_pub.Write(String_(json.dumps(dict(
             server_id=status['server_id'], order=['left', 'right', 'head'],
             targets_m=np.asarray(references['ref_body_pos_subset']).tolist(),
+            raw_targets_m=(np.asarray(references['raw_ref_body_pos_subset']).tolist()
+                           if 'stationary_status' in references else None),
+            stationary_status=references.get('stationary_status'),
             base_pos_m=np.asarray(base_pos).tolist()), allow_nan=False)))
 
     def shutdown(self):

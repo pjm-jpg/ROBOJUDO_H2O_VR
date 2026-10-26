@@ -101,7 +101,7 @@ class H1DDSBridge:
         self.paused = True
         self.reason = 'reset preview'
         with self.lock:
-            self.targets = self.target_root = self.targets_received = None
+            self.targets = self.raw_targets = self.target_root = self.targets_received = None
 
     def on_targets(self, message):
         try:
@@ -110,12 +110,17 @@ class H1DDSBridge:
                 return
             points = np.asarray(value['targets_m'], dtype=float)
             root = np.asarray(value['base_pos_m'], dtype=float)
+            raw = value.get('raw_targets_m')
+            raw = None if raw is None else np.asarray(raw, dtype=float)
+            if raw is not None and (raw.shape != (3, 3) or not np.isfinite(raw).all()):
+                return
             if points.shape != (3, 3) or root.shape != (3,) or not np.isfinite(points).all() or not np.isfinite(root).all():
                 return
         except (ValueError, TypeError, KeyError):
             return
         with self.lock:
             self.targets, self.target_root, self.targets_received = points, root, time.monotonic()
+            self.raw_targets = raw
 
     def draw_targets(self):
         with self.lock:
@@ -123,10 +128,15 @@ class H1DDSBridge:
             # DUMMY odometry has a fixed root. Project policy-relative goals to
             # the simulated root so the balls depict the actual policy task.
             points = (self.targets - self.target_root + self.data.qpos[:3]) if visible else np.zeros((3, 3))
+            raw_visible = visible and self.raw_targets is not None
+            raw = (self.raw_targets-self.target_root+self.data.qpos[:3]) if raw_visible else np.zeros((3, 3))
         for i, label in enumerate(('LEFT', 'RIGHT', 'HEAD')):
             self.viewer.add_marker(id=1000 + i, pos=points[i], size=.04 if visible else 0,
                                    rgba=(0, 1, 0, 1 if visible else 0),
                                    type=mujoco.mjtGeom.mjGEOM_SPHERE, label=label if visible else '')
+            self.viewer.add_marker(id=2000+i, pos=raw[i], size=.035 if raw_visible else 0,
+                                   rgba=(.6, .6, .6, .5 if raw_visible else 0),
+                                   type=mujoco.mjtGeom.mjGEOM_SPHERE, label='RAW_'+label if raw_visible else '')
 
     def on_command(self, message):
         try:

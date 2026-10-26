@@ -1,5 +1,7 @@
 # Quest Pro → H1 H2H 仿真控制
 
+两个 Quest 入口均支持 `--policy-name model_30000_jit` 选择新导出的 Actor，默认仍为 `h2h_release`。见 [模型导出与选择](h2h_model_selection.md)。
+
 真实 H1 使用独立的分阶段入口，见 [H1 Quest 实机部署](h1_quest_real.md)。本文入口继续只允许仿真。
 
 本入口使用 `assets/models/h1/h2h/h2h_release.pt`。Quest 提供三点目标，策略结合机器人状态输出 19 个关节目标。默认直接控制 MuJoCo；新增 `--dds-sim` 可通过实机使用的 Unitree DDS 消息控制独立 MuJoCo 进程，仅限本机回环接口和非零 DDS 域。两种方式均不允许连接真实机器人。DDS 模式的双终端启动步骤见 [H1 DDS 通信仿真](h1_dds_sim.md)。
@@ -158,3 +160,5 @@ python -m unittest discover -s tests -p test_mujoco_viewer_callbacks.py
 ```
 
 新版 APK 已通过 Wi-Fi 安装并实测接收：6 秒收到 381 帧，格式错误为 0，采样期间头部和双手均有效且被追踪。尚未完成真人校准后驱动目标球及机器人策略跟随的完整交互验收，也尚未测量真实无线延迟或验证 sim2real。请先完成上面的目标球预览，再启用仿真跟随。
+
+原地站立优先的双手参考约束已默认启用；行为、范围、回退与 `--full-body` 对比选项见 [原地三点参考说明](stationary_h2h.md)。

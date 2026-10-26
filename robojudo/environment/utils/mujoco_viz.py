@@ -14,6 +14,8 @@ class MujocoVisualizer:
             rgba = (1, 0, 0, 1)
         elif humanoid_id == 1:
             rgba = (0, 1, 0, 1)
+        elif humanoid_id == 2:
+            rgba = (.6, .6, .6, .5)
         else:
             return
 

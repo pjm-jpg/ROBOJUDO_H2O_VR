@@ -58,7 +58,7 @@ class QuestH2HPipeline(Pipeline):
         if obs.shape != (1665,) or action.shape != (19,) or not np.isfinite(action).all():
             raise ValueError(f'H1 H2H contract mismatch: observation={obs.shape}, action={action.shape}')
         self.policy.reset_temporal_state(self._policy_env_data(data))
-        logger.info('Verified h2h_release: 1665 observation values -> 19 joint targets')
+        logger.info('Verified %s: 1665 observation values -> 19 joint targets', self.cfg.policy.policy_name)
 
     def _policy_env_data(self, data):
         result = data.copy()
@@ -70,6 +70,7 @@ class QuestH2HPipeline(Pipeline):
         self.env.reborn()
         self.env.update()
         self.quest.reset()
+        self.policy.reset_reference_guard()
         self._was_enabled = False
         self.policy.reset_temporal_state(self._policy_env_data(self.env.get_data()))
 
@@ -107,6 +108,9 @@ class QuestH2HPipeline(Pipeline):
                 references['robot_body_pos_subset'], np.tile([0, 0, 0, 1], (3, 1)), 0)
             self.env.visualizer.update_rg_view(
                 references['ref_body_pos_subset'], np.tile([0, 0, 0, 1], (3, 1)), 1)
+            if 'stationary_status' in references:
+                self.env.visualizer.update_rg_view(
+                    references['raw_ref_body_pos_subset'], np.tile([0, 0, 0, 1], (3, 1)), 2)
             # Existing viewer markers persist by ID.
         viewer = self.env.viewer
         if viewer is not None and not self.quest.enabled:
@@ -143,6 +147,8 @@ class QuestH2HPipeline(Pipeline):
             self.policy.reset_temporal_state(self._policy_env_data(data))
             self._blend_from = data.dof_pos.copy()
             self._blend_step = 0
+        self.policy.limit_reference(data, control, active=active)
+        references = control["QuestH2HCtrl"]
         self._draw(data, references)
         if active:
             obs, extras = self.policy.get_observation(data, control)

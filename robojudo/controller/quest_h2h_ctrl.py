@@ -233,6 +233,7 @@ class QuestH2HCtrl(Controller):
         problem = self._quality(frame)
         velocity = np.zeros((3, 3))
         target = robot.copy() if self.filtered is None else self.filtered.copy()
+        raw_target = target.copy()
         if problem:
             # A gap can hide a recenter or a headset removal. Do not reuse its
             # calibration just because the first frame after the gap is valid.
@@ -248,11 +249,14 @@ class QuestH2HCtrl(Controller):
             if self.calibrating and is_new:
                 self._calibrate(frame, positions, robot)
             self.last_sample = stamp
+            jumped = (is_new and self.positions is not None and
+                      np.linalg.norm(positions-self.positions, axis=1).max() > self.cfg_ctrl.max_displacement)
             self.positions = positions
             if self.alignment is not None:
                 desired = self.alignment.map(positions)
-                if np.linalg.norm(desired - self.alignment.robot, axis=1).max() > self.cfg_ctrl.max_displacement:
-                    self.invalidate('target outside calibrated range; C to recalibrate', recalibrate=True)
+                raw_target = desired.copy()
+                if jumped:
+                    self.invalidate('VR input jumped; C to recalibrate', recalibrate=True)
                 else:
                     if self.enabled:
                         dt = 1.0 / self.cfg_ctrl.frequency
@@ -274,6 +278,8 @@ class QuestH2HCtrl(Controller):
             self._last_logged_reason = self.reason
             self._last_report = now
         return {'ref_body_pos_subset': target, 'ref_body_vel_subset': velocity,
+                'raw_ref_body_pos_subset': raw_target,
+                'stationary_anchor': None if self.alignment is None else self.alignment.robot.copy(),
                 'robot_body_pos_subset': robot, 'enabled': self.enabled,
                 'calibrated': self.alignment is not None, 'status': self.reason,
                 'stream_key': self.stream_key}

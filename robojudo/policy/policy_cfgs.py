@@ -2,6 +2,7 @@ from pydantic import field_validator, model_validator
 
 from robojudo.config import ASSETS_DIR, Config
 from robojudo.tools.tool_cfgs import DoFConfig
+from robojudo.policy.utils.stationary_reference import StationaryReferenceCfg
 
 
 class PolicyCfg(Config):
@@ -153,6 +154,8 @@ class SmoothPolicyCfg(PolicyCfg):
 
 
 class H2HPolicyCfg(PolicyCfg):
+    stationary_reference: StationaryReferenceCfg = StationaryReferenceCfg()
+
     class ObsScalesCfg(Config):
         ang_vel: float = 1.0
         dof_vel: float = 1.0

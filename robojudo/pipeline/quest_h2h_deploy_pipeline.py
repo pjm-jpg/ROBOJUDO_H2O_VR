@@ -103,6 +103,9 @@ class QuestH2HDeployPipeline(Pipeline):
                 self._last_reference = self._stand_reference.copy()
                 self._blend_from = data.dof_pos.copy()
                 self._policy_steps = 0
+                # WAIT may have observed an unprepared robot. Anchor the
+                # stationary task only to the posture actually reached by P.
+                self.policy.reset_reference_guard()
                 self.policy.reset_temporal_state(self._policy_env_data(data))
                 self.phase = 'STAND'
                 logger.warning('STAND: policy enabled with fixed three-point targets; VR is not in control')
@@ -182,7 +185,8 @@ class QuestH2HDeployPipeline(Pipeline):
                 self._return_to_stand(self.quest.reason)
             old_reference = self._last_reference.copy()
             if self.phase == 'VR':
-                reference = references['ref_body_pos_subset'].copy()
+                key = 'raw_ref_body_pos_subset' if self.policy.reference_guard is not None else 'ref_body_pos_subset'
+                reference = references.get(key, references['ref_body_pos_subset']).copy()
             elif self._return_from is not None:
                 self._return_step += 1
                 alpha = min(self._return_step * self.dt / self.cfg.return_seconds, 1.)
@@ -194,9 +198,12 @@ class QuestH2HDeployPipeline(Pipeline):
             else:
                 reference = self._stand_reference.copy()
             references['ref_body_pos_subset'] = reference
+            references['raw_ref_body_pos_subset'] = reference.copy()
             references['ref_body_vel_subset'] = (reference-old_reference)/self.dt
             control['QuestH2HCtrl'] = references
             obs, _ = self.policy.get_observation(data, control)
+            references = control["QuestH2HCtrl"]
+            reference = references["ref_body_pos_subset"].copy()
             target = self.policy.get_pd_target(obs)
             alpha = min((self._policy_steps+1)*self.dt / self.cfg.policy_start_blend_seconds, 1.)
             # Preserve the learned balance controller. Slewing its PD position

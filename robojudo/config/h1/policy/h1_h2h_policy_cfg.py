@@ -1,5 +1,6 @@
 from robojudo.policy.policy_cfgs import H2HPolicyCfg
 from robojudo.tools.tool_cfgs import DoFConfig
+from robojudo.policy.utils.stationary_reference import StationaryReferenceCfg
 
 
 class H1H2HDoF(DoFConfig):
@@ -51,3 +52,4 @@ class H1H2HPolicyCfg(H2HPolicyCfg):
 
     # ======= POLICY SPECIFIC CONFIGURATION =======
     use_imu_torso: bool = True
+    stationary_reference: StationaryReferenceCfg = StationaryReferenceCfg(enabled=True)

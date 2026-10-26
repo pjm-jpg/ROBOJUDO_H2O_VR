@@ -11,6 +11,7 @@ from robojudo.environment import Environment
 from robojudo.pipeline import Pipeline, pipeline_registry
 from robojudo.pipeline.pipeline_cfgs import RlPipelineCfg
 from robojudo.policy import Policy, PolicyCfg
+from robojudo.policy.utils.stationary_reference import StationaryReferenceGuard
 from robojudo.tools.dof import DoFAdapter
 from robojudo.tools.tool_cfgs import DoFConfig
 from robojudo.utils.progress import ProgressBar
@@ -35,10 +36,48 @@ class PolicyWrapper:
 
         policy_class: type[Policy] = getattr(robojudo.policy, policy_type)
         self.policy: Policy = policy_class(cfg_policy=cfg_policy, device=device)
+        guard_cfg = getattr(cfg_policy, "stationary_reference", None)
+        self.reference_guard = StationaryReferenceGuard(guard_cfg) if guard_cfg and guard_cfg.enabled else None
+        if self.reference_guard is not None:
+            logger.info("H2H stationary reference enabled: fixed head, bounded hands; --full-body disables it")
         self.obs_adapter = DoFAdapter(env_dof_cfg.joint_names, self.policy.cfg_obs_dof.joint_names)
         self.actions_adapter = DoFAdapter(self.policy.cfg_action_dof.joint_names, env_dof_cfg.joint_names)
 
+    def reset_reference_guard(self):
+        if self.reference_guard is not None:
+            self.reference_guard.reset()
+
+    def reset(self):
+        self.reset_reference_guard()
+        return self.policy.reset()
+
+    def limit_reference(self, env_data, ctrl_data, active=True):
+        if self.reference_guard is None:
+            return
+        for name in ("QuestH2HCtrl", "MotionH2HCtrl"):
+            if name not in ctrl_data:
+                continue
+            reference = ctrl_data[name]
+            if reference.get("_stationary_processed", False):
+                return
+            raw = reference.get("raw_ref_body_pos_subset", reference["ref_body_pos_subset"])
+            robot = reference["robot_body_pos_subset"]
+            anchor = reference.get("stationary_anchor")
+            if anchor is None:
+                anchor = self.reference_guard.anchor
+            if anchor is None:
+                anchor = reference["ref_body_pos_subset"]
+            target, velocity, status = self.reference_guard.apply(
+                raw, robot, anchor, env_data, 1/self.policy.freq, active=active)
+            reference["raw_ref_body_pos_subset"] = np.asarray(raw).copy()
+            reference["ref_body_pos_subset"] = target
+            reference["ref_body_vel_subset"] = velocity
+            reference["stationary_status"] = status
+            reference["_stationary_processed"] = True
+            return
+
     def get_observation(self, env_data: Box, ctrl_data: Box):
+        self.limit_reference(env_data, ctrl_data)
         env_data_adapted = env_data.copy()
         env_data_adapted.dof_pos = self.obs_adapter.fit(env_data_adapted.dof_pos)
         env_data_adapted.dof_vel = self.obs_adapter.fit(env_data_adapted.dof_vel)
@@ -102,6 +141,11 @@ class RlPipeline(Pipeline):
     def _has_default_pose_mode(self) -> bool:
         return hasattr(self._inner_policy(), "set_default_pose_mode")
 
+    @property
+    def _uses_h2h_motion(self) -> bool:
+        return (self.cfg.policy.policy_type == "H2HStudentPolicy"
+                and any(ctrl.ctrl_type == "MotionH2HCtrl" for ctrl in self.cfg.ctrl))
+
     def _set_default_pose_mode(self, enabled: bool):
         """Enable/disable default-pose mode on the inner policy (if supported)."""
         inner = self._inner_policy()
@@ -158,6 +202,7 @@ class RlPipeline(Pipeline):
                     if hasattr(self.env, "reborn"):
                         logger.warning("Simulation Env reborn!")
                         self.env.reborn()  # pyright: ignore[reportAttributeAccessIssue]
+                        self.policy.reset_reference_guard()
                         self.policy.reset_alignment()
                 case "[MOTION_RESET]":
                     # MotionCtrl 会在后面的 post_step_callback() 中把
@@ -181,7 +226,10 @@ class RlPipeline(Pipeline):
                     self._blend_out_active = False
                     self._blend_out_step = 0
                     self._user_fade_out = False
-                    if self._has_default_pose_mode:
+                    if self._uses_h2h_motion:
+                        self._pending_blend_in = False
+                        logger.info("H2H playback resumed; balance policy remains active")
+                    elif self._has_default_pose_mode:
                         self._set_default_pose_mode(False)
                         logger.info("Motion fade in — starting motion from frame 0")
                     elif was_blended_out:
@@ -191,7 +239,14 @@ class RlPipeline(Pipeline):
                         self._pending_blend_in = False
                         logger.info("Motion fade in — starting reference playback")
                 case "[MOTION_FADE_OUT]":
-                    if self._has_default_pose_mode:
+                    if self._uses_h2h_motion:
+                        # Keep the balancing Actor active as reference playback stops.
+                        self._blend_out_active = False
+                        self._blend_out_step = 0
+                        self._pending_blend_in = False
+                        self._user_fade_out = False
+                        logger.info("H2H playback paused; balance policy remains active")
+                    elif self._has_default_pose_mode:
                         logger.info("Fade out — switching to default pose mode")
                         self._set_default_pose_mode(True)
                         self._user_fade_out = True

@@ -1,14 +1,17 @@
-"""Run Quest three-point teleoperation in H1 MuJoCo using h2h_release.pt."""
+"""Run Quest three-point teleoperation in H1 MuJoCo with a selected H2H Actor."""
 import argparse
 import logging
 import time
 
 from robojudo.config.config_manager import ConfigManager
 from robojudo.pipeline.quest_h2h_pipeline import QuestH2HPipeline
+from robojudo.policy.utils.h2h_model import policy_name, select_h2h_model
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--policy-name', type=policy_name, default='h2h_release',
+                        help='Model name in assets/models/h1/h2h, e.g. model_30000_jit (optional .pt suffix)')
     connection = parser.add_mutually_exclusive_group()
     connection.add_argument('--ip', help='Quest Wi-Fi address; omit for USB')
     connection.add_argument('--serial', help='USB ADB device serial')
@@ -25,16 +28,18 @@ def parse_args():
     parser.add_argument('--head-scale', type=float, default=1.0)
     parser.add_argument('--hand-scale', type=float, default=1.0)
     parser.add_argument('--steps', type=int, help='Exit after this many loop iterations')
+    parser.add_argument("--full-body", action="store_true", help="Use original unrestricted full-body references")
     args = parser.parse_args()
     if args.steps is not None and args.steps <= 0:
         parser.error('--steps must be positive')
     return args
 
 
-def main():
-    args = parse_args()
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s', force=True)
+def make_cfg(args):
     cfg = ConfigManager('h1_h2h_quest').get_cfg()
+    cfg.policy = select_h2h_model(cfg.policy, args.policy_name)
+    if getattr(args, "full_body", False):
+        cfg.policy.stationary_reference.enabled = False
     cfg.device = 'cpu'
     cfg.preview_only = args.preview_only
     if args.dds_sim:
@@ -55,6 +60,13 @@ def main():
     # Re-validate CLI values rather than bypassing Pydantic with assignment.
     cfg.ctrl = [type(ctrl).model_validate({**ctrl.model_dump(), **overrides})
                 if ctrl is quest else ctrl for ctrl in cfg.ctrl]
+    return cfg
+
+
+def main():
+    args = parse_args()
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s', force=True)
+    cfg = make_cfg(args)
     pipeline = None
     try:
         pipeline = QuestH2HPipeline(cfg)

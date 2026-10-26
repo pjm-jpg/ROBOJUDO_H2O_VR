@@ -50,6 +50,8 @@ class MotionH2HCtrl(MotionCtrl):
 
         self.play_speed_ratio = 0.0
         self.speed_target =0.1# 1 / 2
+        initial = self.get_motion()['rg_pos_t'].cpu().numpy().squeeze()
+        self.stationary_anchor = initial[self.motion_track_bodies_extend_id].copy()
 
     def get_robot_state(self):
         fk_info = self.env.fk_info
@@ -80,6 +82,7 @@ class MotionH2HCtrl(MotionCtrl):
 
         ctrl_data = {
             "ref_body_pos_subset": ref_body_pos_subset,
+            "stationary_anchor": self.stationary_anchor.copy(),
             "ref_body_vel_subset": ref_body_vel_subset,
             "robot_body_pos_subset": body_pos_subset,
             "dof_pos": motion_res["dof_pos"].cpu().numpy().squeeze().copy(),

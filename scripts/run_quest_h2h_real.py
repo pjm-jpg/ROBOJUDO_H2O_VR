@@ -6,10 +6,13 @@ import socket
 import time
 
 from robojudo.environment.utils.h1_state_check import inspect_h1_state
+from robojudo.policy.utils.h2h_model import policy_name, select_h2h_model
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--policy-name', type=policy_name, default='h2h_release',
+                        help='Model name in assets/models/h1/h2h, e.g. model_30000_jit (optional .pt suffix)')
     parser.add_argument('--interface', default='enp3s0', help='H1-facing Ethernet interface; no robot IP required')
     parser.add_argument('--actuate', action='store_true', help='Allow commands AFTER P; use only with robot supported')
     parser.add_argument('--duration', type=float, default=10, help='Subscriber-only check duration, seconds')
@@ -23,6 +26,7 @@ def parse_args():
     parser.add_argument('--record')
     parser.add_argument('--no-keyboard', action='store_true', help='Passive WAIT only; cannot initiate motion')
     parser.add_argument('--steps', type=int)
+    parser.add_argument("--full-body", action="store_true", help="Use original unrestricted full-body references")
     args = parser.parse_args()
     if not math.isfinite(args.duration) or args.duration <= 0:
         parser.error('--duration must be finite and positive')
@@ -46,6 +50,9 @@ def make_cfg(args):
     from robojudo.controller.ctrl_cfgs import KeyboardCtrlCfg
 
     cfg = QuestH2HDeployCfg(device='cpu')
+    cfg.policy = select_h2h_model(cfg.policy, getattr(args, 'policy_name', 'h2h_release'))
+    if getattr(args, "full_body", False):
+        cfg.policy.stationary_reference.enabled = False
     unitree = H1UnitreeCfg(net_if=args.interface, control_dt=.0025, state_timeout=.1,
                          command_timeout=.15, connect_timeout=10)
     if args.dds_sim:
