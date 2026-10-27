@@ -71,20 +71,28 @@ class StationaryReferenceTest(unittest.TestCase):
         self.assertGreater(target[1,2]-ANCHOR[1,2],.35)
         self.assertLessEqual(np.linalg.norm(target[1]-[0,-.2,1.4]),self.cfg.shoulder_reach_m+1e-12)
 
-    def test_near_full_extension_passes_forward_outward_and_upward(self):
-        # Preserve points before the soft boundary, then verify the outer cap.
+    def test_directional_limits_pass_forward_outward_and_upward(self):
+        # Preserve points before the soft boundary, then verify each directional cap.
+        self.assertEqual(self.cfg.forward_m,1.10)
+        self.assertEqual(self.cfg.backward_m,.45)
+        self.assertEqual(self.cfg.lateral_m,1.70)
+        self.assertEqual(self.cfg.upward_m,.90)
+        self.assertEqual(self.cfg.shoulder_reach_m,1.70)
         data=observation()
         for index,side in enumerate(('left','right')):
             center=data['fk_info'][side+'_shoulder_pitch_link']['pos']
-            for direction in ([1,0,0],[0,1 if index==0 else -1,0],[0,0,1]):
+            for direction,limit in (([1,0,0],self.cfg.forward_m),
+                                    ([-1,0,0],self.cfg.backward_m),
+                                    ([0,1 if index==0 else -1,0],self.cfg.lateral_m),
+                                    ([0,0,1],self.cfg.upward_m)):
                 guard=StationaryReferenceGuard(self.cfg)
-                raw=ANCHOR.copy();raw[index]=center+(self.cfg.shoulder_reach_m*(self.cfg.soft_boundary-.01))*np.asarray(direction)
+                raw=ANCHOR.copy();raw[index]=center+(limit*(self.cfg.soft_boundary-.01))*np.asarray(direction)
                 target,_,_=guard.apply(raw,ANCHOR,ANCHOR,data,.02,active=False)
                 np.testing.assert_allclose(target[index],raw[index],atol=1e-12)
-                raw[index]=center+2*np.asarray(direction)
+                raw[index]=center+3*np.asarray(direction)
                 target,_,status=guard.apply(raw,ANCHOR,ANCHOR,data,.02,active=False)
                 self.assertTrue(status['limited'])
-                self.assertAlmostEqual(np.linalg.norm(target[index]-center),self.cfg.shoulder_reach_m)
+                self.assertAlmostEqual(np.linalg.norm(target[index]-center),limit)
 
     def test_settled_bias_is_not_a_fault_but_new_tracking_error_still_triggers(self):
         guard=StationaryReferenceGuard(StationaryReferenceCfg(enabled=True,feedback_warmup_seconds=.1))

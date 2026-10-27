@@ -13,12 +13,12 @@ logger = logging.getLogger(__name__)
 
 class StationaryReferenceCfg(Config):
     enabled: bool = False
-    forward_m: float = Field(default=.90, gt=0, allow_inf_nan=False)
-    backward_m: float = Field(default=.25, gt=0, allow_inf_nan=False)
-    lateral_m: float = Field(default=.90, gt=0, allow_inf_nan=False)
+    forward_m: float = Field(default=1.10, gt=0, allow_inf_nan=False)
+    backward_m: float = Field(default=.45, gt=0, allow_inf_nan=False)
+    lateral_m: float = Field(default=1.70, gt=0, allow_inf_nan=False)
     upward_m: float = Field(default=.90, gt=0, allow_inf_nan=False)
     downward_m: float = Field(default=.65, gt=0, allow_inf_nan=False)
-    shoulder_reach_m: float = Field(default=.90, gt=0, allow_inf_nan=False)
+    shoulder_reach_m: float = Field(default=1.70, gt=0, allow_inf_nan=False)
     hand_separation_m: float = Field(default=.12, gt=0, allow_inf_nan=False)
     soft_boundary: float = Field(default=.97, gt=0, lt=1, allow_inf_nan=False)
     max_speed_m_s: float = Field(default=.80, gt=0, allow_inf_nan=False)
